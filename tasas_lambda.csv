@@ -1,0 +1,6 @@
+parametro,valor,descripcion
+lambda_view,10.16229680738403,Tasa V→P: visita a vista de perfil
+lambda_cart,5.569608445555327,Tasa P→C: vista a solicitud de adopción
+lambda_purchase,8.021519843200174,Tasa C→B: solicitud a adopción completa
+lambda_abandon,16.560307098319363,Tasa P→A: vista a abandono
+tau_horas,0.09363616666666667,Tiempo medio de sesión en horas
