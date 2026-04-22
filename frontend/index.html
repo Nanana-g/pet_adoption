@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fase 5 - Simulador Dinámico</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a1a1a; color: #f0f0f0; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+        .panel { background-color: #2a2a2a; border-radius: 8px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h1, h3 { color: #ff8c00; margin-top: 0; }
+        label { display: block; margin-top: 15px; font-weight: bold; color: #ccc; }
+        input[type="range"] { width: 100%; margin-top: 5px; }
+        .value-label { float: right; color: #ff8c00; }
+        .metrics { display: flex; justify-content: space-between; margin-top: 20px; }
+        .metric-card { text-align: center; background-color: #333; padding: 15px; border-radius: 6px; width: 30%; border-top: 3px solid #ff8c00; }
+        .metric-value { font-size: 28px; font-weight: bold; margin-top: 10px; color: white; }
+        button { background-color: #ff8c00; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 25px; transition: background 0.3s; }
+        button:hover { background-color: #e67e00; }
+    </style>
+</head>
+<body>
+
+    <h1 style="text-align: center; margin-bottom: 30px;">Proyecto Integrado: Simulación del Funnel de E-commerce</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h3>Parámetros de la EDO</h3>
+            
+            <label>Multiplicador de Tráfico (α_mult) <span id="val-alpha" class="value-label">1.0</span></label>
+            <input type="range" id="alpha_mult" min="0.1" max="3.0" step="0.1" value="1.0" oninput="updateVal('alpha')">
+
+            <label>Tasa de Exploración (λ_view) <span id="val-view" class="value-label">1.50</span></label>
+            <input type="range" id="lambda_view" min="0.1" max="5.0" step="0.1" value="1.50" oninput="updateVal('view')">
+
+            <label>Tasa de Intención (λ_cart) <span id="val-cart" class="value-label">0.80</span></label>
+            <input type="range" id="lambda_cart" min="0.1" max="5.0" step="0.1" value="0.80" oninput="updateVal('cart')">
+
+            <label>Tasa de Conversión (λ_purchase) <span id="val-purchase" class="value-label">0.50</span></label>
+            <input type="range" id="lambda_purchase" min="0.1" max="5.0" step="0.1" value="0.50" oninput="updateVal('purchase')">
+
+            <label>Tasa de Abandono (λ_abandon) <span id="val-abandon" class="value-label">0.30</span></label>
+            <input type="range" id="lambda_abandon" min="0.1" max="5.0" step="0.1" value="0.30" oninput="updateVal('abandon')">
+
+            <div style="margin-top: 15px;">
+                <input type="checkbox" id="alpha_spike">
+                <label for="alpha_spike" style="display: inline; color:#fff;">Activar Spike de Tráfico (Campaña 24h)</label>
+            </div>
+
+            <button onclick="ejecutarSimulacion()">Simular Escenario</button>
+        </div>
+
+        <div class="panel">
+            <canvas id="funnelChart"></canvas>
+            
+            <div class="metrics">
+                <div class="metric-card">
+                    <div>Adopciones Acumuladas B(t)</div>
+                    <div class="metric-value" id="kpi-adopciones">0</div>
+                </div>
+                <div class="metric-card">
+                    <div>Abandonos Acumulados A(t)</div>
+                    <div class="metric-value" id="kpi-abandonos">0</div>
+                </div>
+                <div class="metric-card">
+                    <div>Tasa de Conversión Final</div>
+                    <div class="metric-value" id="kpi-conversion">0%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        function updateVal(id) {
+            document.getElementById('val-' + id).innerText = document.getElementById(id.includes('alpha') ? id : 'lambda_' + id).value;
+        }
+
+        async function ejecutarSimulacion() {
+            // Construir JSON para el endpoint POST
+            const payload = {
+                lambda_view: parseFloat(document.getElementById('lambda_view').value),
+                lambda_cart: parseFloat(document.getElementById('lambda_cart').value),
+                lambda_purchase: parseFloat(document.getElementById('lambda_purchase').value),
+                lambda_abandon: parseFloat(document.getElementById('lambda_abandon').value),
+                alpha_mult: parseFloat(document.getElementById('alpha_mult').value),
+                alpha_spike: document.getElementById('alpha_spike').checked
+            };
+
+            try {
+                const response = await fetch('http://localhost:5000/api/simular', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                actualizarGrafico(data);
+                
+                // Actualizar KPIs en la UI
+                document.getElementById('kpi-adopciones').innerText = data.adopciones_fin;
+                document.getElementById('kpi-abandonos').innerText = data.abandonos_fin;
+                document.getElementById('kpi-conversion').innerText = data.conv_rate + '%';
+                
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Error de conexión. ¿Está corriendo el servidor app.py en el puerto 5000?");
+            }
+        }
+
+        function actualizarGrafico(data) {
+            const ctx = document.getElementById('funnelChart').getContext('2d');
+            
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.t.map(v => v.toFixed(1)),
+                    datasets: [
+                        { label: 'V(t) - Visitas', data: data.V, borderColor: '#3498db', fill: false, tension: 0.1 },
+                        { label: 'P(t) - Perfil', data: data.P, borderColor: '#e67e22', fill: false, tension: 0.1 },
+                        { label: 'C(t) - Solicitud', data: data.C, borderColor: '#9b59b6', fill: false, tension: 0.1 },
+                        { label: 'B(t) - Adopciones', data: data.B, borderColor: '#2ecc71', fill: false, tension: 0.1, borderWidth: 3 },
+                        { label: 'A(t) - Abandonos', data: data.A, borderColor: '#e74c3c', fill: false, tension: 0.1, borderDash: [5, 5] }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Tiempo (horas)', color: '#ccc' }, ticks: { color: '#aaa' } },
+                        y: { title: { display: true, text: 'Usuarios', color: '#ccc' }, ticks: { color: '#aaa' } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
