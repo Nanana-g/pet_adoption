@@ -2,7 +2,7 @@
 
 ## Estudiantes:
 Ariana Víquez
-Fabián 
+Fabián Barquero 
 
 ## Running the Project
 
